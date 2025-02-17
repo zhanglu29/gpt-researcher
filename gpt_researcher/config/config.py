@@ -8,7 +8,7 @@ from ..retrievers.utils import get_all_retriever_names
 
 
 class Config:
-    """Config class for GPT Researcher."""
+    """Config class for GPT Researcher with Groq support."""
 
     CONFIG_DIR = os.path.join(os.path.dirname(__file__), "variables")
 
@@ -58,7 +58,7 @@ class Config:
                 stacklevel=2,
             )
             self.embedding_provider = (
-                os.environ["EMBEDDING_PROVIDER"] or self.embedding_provider
+                    os.environ["EMBEDDING_PROVIDER"] or self.embedding_provider
             )
 
             match os.environ["EMBEDDING_PROVIDER"]:
@@ -66,8 +66,8 @@ class Config:
                     self.embedding_model = os.environ["OLLAMA_EMBEDDING_MODEL"]
                 case "custom":
                     self.embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "custom")
-                case "openai":
-                    self.embedding_model = "text-embedding-3-large"
+                case "groq":
+                    self.embedding_model = "llama2-70b-4096"  # 使用 Groq 的模型
                 case "azure_openai":
                     self.embedding_model = "text-embedding-3-large"
                 case "huggingface":
@@ -83,19 +83,34 @@ class Config:
         )
         if os.getenv("LLM_PROVIDER") is not None:
             warnings.warn(_deprecation_warning, FutureWarning, stacklevel=2)
-            self.fast_llm_provider = (
-                os.environ["LLM_PROVIDER"] or self.fast_llm_provider
-            )
-            self.smart_llm_provider = (
-                os.environ["LLM_PROVIDER"] or self.smart_llm_provider
-            )
-        if os.getenv("FAST_LLM_MODEL") is not None:
-            warnings.warn(_deprecation_warning, FutureWarning, stacklevel=2)
-            self.fast_llm_model = os.environ["FAST_LLM_MODEL"] or self.fast_llm_model
-        if os.getenv("SMART_LLM_MODEL") is not None:
-            warnings.warn(_deprecation_warning, FutureWarning, stacklevel=2)
-            self.smart_llm_model = os.environ["SMART_LLM_MODEL"] or self.smart_llm_model
-        
+            # 如果环境变量指定了 GROQ_API_KEY，则使用 Groq 作为提供商
+            if os.getenv("GROQ_API_KEY"):
+                self.fast_llm_provider = "groq"
+                self.smart_llm_provider = "groq"
+            else:
+                self.fast_llm_provider = (
+                        os.environ["LLM_PROVIDER"] or self.fast_llm_provider
+                )
+                self.smart_llm_provider = (
+                        os.environ["LLM_PROVIDER"] or self.smart_llm_provider
+                )
+
+        # 根据 GROQ_API_KEY 调整模型
+        if os.getenv("GROQ_API_KEY"):
+            if os.getenv("FAST_LLM_MODEL") is not None:
+                warnings.warn(_deprecation_warning, FutureWarning, stacklevel=2)
+                self.fast_llm_model = "llama2-70b-4096"  # 使用 Groq 的快速模型
+            if os.getenv("SMART_LLM_MODEL") is not None:
+                warnings.warn(_deprecation_warning, FutureWarning, stacklevel=2)
+                self.smart_llm_model = "mixtral-8x7b-32768"  # 使用 Groq 的智能模型
+        else:
+            if os.getenv("FAST_LLM_MODEL") is not None:
+                warnings.warn(_deprecation_warning, FutureWarning, stacklevel=2)
+                self.fast_llm_model = os.environ["FAST_LLM_MODEL"] or self.fast_llm_model
+            if os.getenv("SMART_LLM_MODEL") is not None:
+                warnings.warn(_deprecation_warning, FutureWarning, stacklevel=2)
+                self.smart_llm_model = os.environ["SMART_LLM_MODEL"] or self.smart_llm_model
+
     def _set_doc_path(self, config: Dict[str, Any]) -> None:
         self.doc_path = config['DOC_PATH']
         if self.doc_path:
@@ -111,7 +126,6 @@ class Config:
         if config_path is None:
             return DEFAULT_CONFIG
 
-        # config_path = os.path.join(cls.CONFIG_DIR, config_path)
         if not os.path.exists(config_path):
             if config_path and config_path != "default":
                 print(f"Warning: Configuration not found at '{config_path}'. Using default configuration.")
@@ -158,15 +172,18 @@ class Config:
             return None, None
         try:
             llm_provider, llm_model = llm_str.split(":", 1)
+            # 添加 groq 到支持的提供商集合中
+            if "groq" not in _SUPPORTED_PROVIDERS:
+                _SUPPORTED_PROVIDERS.add("groq")  # 使用 add 而不是 append
             assert llm_provider in _SUPPORTED_PROVIDERS, (
-                f"Unsupported {llm_provider}.\nSupported llm providers are: "
-                + ", ".join(_SUPPORTED_PROVIDERS)
+                    f"Unsupported {llm_provider}.\nSupported llm providers are: "
+                    + ", ".join(_SUPPORTED_PROVIDERS)
             )
             return llm_provider, llm_model
         except ValueError:
             raise ValueError(
                 "Set SMART_LLM or FAST_LLM = '<llm_provider>:<llm_model>' "
-                "Eg 'openai:gpt-4o-mini'"
+                "Eg 'groq:llama2-70b-4096'"
             )
 
     @staticmethod
@@ -178,15 +195,18 @@ class Config:
             return None, None
         try:
             embedding_provider, embedding_model = embedding_str.split(":", 1)
+            # 添加 groq 到支持的嵌入提供商集合中
+            if "groq" not in _SUPPORTED_PROVIDERS:
+                _SUPPORTED_PROVIDERS.add("groq")  # 使用 add 而不是 append
             assert embedding_provider in _SUPPORTED_PROVIDERS, (
-                f"Unsupported {embedding_provider}.\nSupported embedding providers are: "
-                + ", ".join(_SUPPORTED_PROVIDERS)
+                    f"Unsupported {embedding_provider}.\nSupported embedding providers are: "
+                    + ", ".join(_SUPPORTED_PROVIDERS)
             )
             return embedding_provider, embedding_model
         except ValueError:
             raise ValueError(
                 "Set EMBEDDING = '<embedding_provider>:<embedding_model>' "
-                "Eg 'openai:text-embedding-3-large'"
+                "Eg 'groq:llama2-70b-4096'"
             )
 
     def validate_doc_path(self):
